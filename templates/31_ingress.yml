@@ -1,0 +1,55 @@
+# Ingress mist-insight
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mist-insight
+  namespace: mist-insight
+  labels:
+    app: mist-insight
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: 100m
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    # keycloak
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/session-cookie-name: "route"
+    nginx.ingress.kubernetes.io/session-cookie-expires: "172800"
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "172800"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - {{ .Values.MIST_HOSTNAME }}
+      secretName: tls-secret
+  rules:
+    - host: {{ .Values.MIST_HOSTNAME }}
+      http:
+        paths:
+          # mist
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: insight-ui
+                port:
+                  number: 443
+          # keycloak
+          - path: /realms/
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak
+                port:
+                  number: 8443
+          - path: /resources
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak
+                port:
+                  number: 8443
+
+

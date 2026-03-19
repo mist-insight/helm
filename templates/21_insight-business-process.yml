@@ -1,0 +1,174 @@
+# Service insight-business-process
+apiVersion: v1
+kind: Service
+metadata:
+  name: insight-business-process
+  namespace: mist-insight
+  labels:
+    app: insight-business-process
+spec:
+  ports:
+    - name: https
+      port: 9017
+  selector:
+    app: insight-business-process
+  type: ClusterIP
+---
+# ConfigMap insight-business-process
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: insight-business-process-config
+  namespace: mist-insight
+  labels:
+    app: insight-business-process
+data:
+  # SERVER
+  server.ssl.enabled: "true"
+  server.ssl.key-store: "/etc/secret/keystore.jks"
+  server.ssl.key-store-type: "JKS"
+  server.ssl.key-store-password: {{ .Values.MIST_KEYSTORE_PASSWORD }}
+  server.ssl.key-alias: "mist"
+  server.ssl.enabled-protocols: "TLSv1.3"
+  # DATABASE
+  spring.datasource.url: "jdbc:postgresql://external-postgres:5432/mist_db?currentSchema=mist_business_process&sslmode=disable&sslfactory=org.postgresql.ssl.NonValidatingFactory"
+  spring.datasource.username: "mist"
+  spring.datasource.password: {{ .Values.MIST_DATABASE_PASSWORD }}
+  spring.datasource.type: "com.zaxxer.hikari.HikariDataSource"
+  spring.datasource.driver-class-name: "org.postgresql.Driver"
+  spring.datasource.hikari.maximum-pool-size: "5"
+  # LIQUIBASE
+  spring.liquibase.enabled: "true"
+  spring.liquibase.drop-first: "false"
+  spring.liquibase.change-log: "classpath:liquibase/changelog.xml"
+  spring.liquibase.default-schema: "mist_business_process"
+  # JOOQ
+  spring.jooq.sql-dialect: "POSTGRES"
+  # RABBITMQ
+  spring.rabbitmq.host: "rabbitmq"
+  spring.rabbitmq.port: "5672"
+  spring.rabbitmq.username: "mistech_srvs_conn"
+  spring.rabbitmq.password: {{ .Values.RABBITMQ_PASSWORD }}
+  spring.rabbitmq.virtual-host: "mist_srvs_vhost"
+  spring.rabbitmq.listener.simple.retry.enabled: "true"
+  spring.rabbitmq.listener.simple.retry.initial-interval: "4s"
+  spring.rabbitmq.listener.simple.retry.max-interval: "60s"
+  spring.rabbitmq.listener.simple.retry.max-attempts: "10"
+  spring.rabbitmq.listener.simple.retry.multiplier: "2"
+  # REDIS
+  spring.data.redis.host: "redis"
+  spring.data.redis.port: "6379"
+  spring.data.redis.password: {{ .Values.REDIS_PASSWORD }}
+  # SECURITY
+  spring.security.oauth2.resourceserver.jwt.jwk-set-uri: https://keycloak:8443/realms/mist/protocol/openid-connect/certs
+  spring.security.oauth2.client.registration.keycloak.authorization-grant-type: client_credentials
+  spring.security.oauth2.client.registration.keycloak.client-id: {{ .Values.KEYCLOAK_CLIENT_ID }}
+  spring.security.oauth2.client.registration.keycloak.client-secret: {{ .Values.KEYCLOAK_CLIENT_SECRET }}
+  spring.security.oauth2.client.provider.keycloak.token-uri: https://keycloak:8443/realms/mist/protocol/openid-connect/token
+  spring.security.oauth2.client.provider.keycloak.authorization-uri: https://keycloak:8443/realms/mist/protocol/openid-connect/auth
+  # MIST
+  app.title: "MIST Insight"
+  app.path.attachment: "/opt/insight/attachments"
+  app.config.cache.enabled: "true"
+  app.folders.chrome-headless.path: "/opt/insight/chrome-linux"
+  mist.kubernetes.name: "insight-business-process"
+  # OPENSEARCH
+  #app.opensearch.url: "https://external-opensearch:9500"
+  app.opensearch.url: "https://opensearch-cluster-master:9200"
+  app.opensearch.login: "admin"
+  app.opensearch.password: {{ .Values.OPENSEARCH_PASSWORD }}
+  # S3
+  app.s3.enabled: "true"
+  app.s3.path: "https://external-s3:9000"
+  app.s3.bucket-name: "mist"
+  app.s3.region: {{ .Values.S3_REGION }}
+  app.s3.access-key: {{ .Values.S3_ACCESS_KEY }}
+  app.s3.secret-key: {{ .Values.S3_SECRET_KEY }}
+  # MS
+  app.microservice.analytics-service.path: "https://insight-analytics:9300/mistech/analytics/v1"
+  app.microservice.user-service.path: "https://insight-user-service:9201/mistech/user_service/v1"
+  app.microservice.discovery.path: "https://insight-discovery:9400/mistech/discovery/v1"
+  app.microservice.recovery-service.path: "https://insight-recovery:9015/mistech/recovery/v1"
+  # LOG
+  logging.level.ROOT: "INFO"
+  logging.level.ROOT.org.apache.http: "INFO"
+  #debug: "true"
+---
+# Deployment insight-business-process
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: insight-business-process
+  namespace: mist-insight
+  labels:
+    app: insight-business-process
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: insight-business-process
+  template:
+    metadata:
+      labels:
+        app: insight-business-process
+    spec:
+      volumes:
+        - name: secret-volume
+          secret:
+            secretName: jks-secret
+        - name: new-cacerts
+          emptyDir: { }
+      initContainers:
+        - name: init-insight-business-process
+          image: {{ .Values.MIST_REGISTRY }}/insight-business-process:{{ .Values.VERSION }}
+          command: [ "/bin/sh", "-c" ]
+          args:
+            - |
+              # Copy original cacerts and import the custom CA
+              cp $JAVA_HOME/lib/security/cacerts /opt/new-cacerts/
+              chmod +w /opt/new-cacerts/cacerts
+              keytool -import -trustcacerts -alias mist-ca -no-prompt -keystore /opt/new-cacerts/cacerts -storepass changeit -file /etc/secret/ca.pem
+          volumeMounts:
+            - name: secret-volume
+              mountPath: /etc/secret
+              readOnly: true
+            - name: new-cacerts
+              mountPath: /opt/new-cacerts
+      containers:
+        - name: insight-business-process
+          image: {{ .Values.MIST_REGISTRY }}/insight-business-process:{{ .Values.VERSION }}
+          imagePullPolicy: Always
+          volumeMounts:
+            - name: secret-volume
+              mountPath: /etc/secret
+            - name: new-cacerts
+              mountPath: /opt/jdk/lib/security/cacerts
+              subPath: cacerts
+          ports:
+            - name: http
+              containerPort: 9017
+          envFrom:
+            - configMapRef:
+                name: insight-business-process-config
+          env:
+            - name: JAVA_TOOL_OPTIONS # JAVA_OPTS
+              value: {{ .Values.EFFECTIVE_SERVICE_JAVA_OPTS }}
+          resources:
+            limits:
+              memory: {{ .Values.EFFECTIVE_SERVICE_MEMORY }}
+              cpu: {{ .Values.EFFECTIVE_SERVICE_CPU }}
+            requests:
+              memory: {{ .Values.EFFECTIVE_SERVICE_MEMORY }}
+              cpu: {{ .Values.EFFECTIVE_SERVICE_CPU }}
+          livenessProbe:
+            tcpSocket:
+              port: 9017
+            initialDelaySeconds: 360
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: 9017
+            initialDelaySeconds: 360
+            periodSeconds: 30
+      imagePullSecrets:
+        - name: registry-secret

@@ -1,0 +1,32 @@
+# RabbitMQ
+apiVersion: rabbitmq.com/v1beta1
+kind: RabbitmqCluster
+metadata:
+  name: rabbitmq
+  namespace: mist-insight
+  labels:
+    app: rabbitmq
+spec:
+  replicas: 3
+  resources:
+    requests:
+      cpu: "0.5"
+      memory: 1024M
+    limits:
+      cpu: "0.5"
+      memory: 1024M
+  persistence:
+    storageClassName: standard
+    storage: 5Gi
+  rabbitmq:
+    additionalConfig: |
+      log.console.level = info
+      channel_max = 1700
+      default_user= guest
+      default_pass = guest
+      default_user_tags.administrator = true
+    additionalPlugins:
+      - rabbitmq_management
+      - rabbitmq_stomp
+  service:
+    type: ClusterIP

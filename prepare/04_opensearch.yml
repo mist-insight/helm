@@ -1,0 +1,21 @@
+config:
+  opensearch.yml: |-
+    cluster.name: opensearch-cluster
+    network.host: 0.0.0.0
+extraEnvs:
+  - name: OPENSEARCH_INITIAL_ADMIN_PASSWORD
+    value: "" # <- set password
+persistence:
+  enabled: true
+  storageClass: standard
+  size: 5Gi
+resources:
+  requests:
+    cpu: "0.5"
+    memory: 1024M
+  limits:
+    cpu: "0.5"
+    memory: 1024M
+sysctlInit:
+  enabled: true
+sysctlVmMaxMapCount: 262144

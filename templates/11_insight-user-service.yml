@@ -1,0 +1,163 @@
+# Service insight-user-service
+apiVersion: v1
+kind: Service
+metadata:
+  name: insight-user-service
+  namespace: mist-insight
+  labels:
+    app: insight-user-service
+spec:
+  ports:
+    - name: https
+      port: 9201
+  selector:
+    app: insight-user-service
+  type: ClusterIP
+---
+# ConfigMap insight-user-service
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: insight-user-service-config
+  namespace: mist-insight
+  labels:
+    app: insight-user-service
+data:
+  # SERVER
+  server.ssl.enabled: "true"
+  server.ssl.key-store: "/etc/secret/keystore.jks"
+  server.ssl.key-store-type: "JKS"
+  server.ssl.key-store-password: {{ .Values.MIST_KEYSTORE_PASSWORD }}
+  server.ssl.key-alias: "mist"
+  server.ssl.enabled-protocols: "TLSv1.3"
+  # DATABASE
+  spring.datasource.url: "jdbc:postgresql://external-postgres:5432/mist_db?currentSchema=mist_user_service&sslmode=disable&sslfactory=org.postgresql.ssl.NonValidatingFactory"
+  spring.datasource.username: "mist"
+  spring.datasource.password: {{ .Values.MIST_DATABASE_PASSWORD }}
+  spring.datasource.type: "com.zaxxer.hikari.HikariDataSource"
+  spring.datasource.driver-class-name: "org.postgresql.Driver"
+  spring.datasource.hikari.maximum-pool-size: "5"
+  # LIQUIBASE
+  spring.liquibase.enabled: "true"
+  spring.liquibase.drop-first: "false"
+  spring.liquibase.change-log: "classpath:liquibase/changelog.xml"
+  spring.liquibase.default-schema: "mist_user_service"
+  # JOOQ
+  spring.jooq.sql-dialect: "POSTGRES"
+  # RABBITMQ
+  spring.rabbitmq.host: "rabbitmq"
+  spring.rabbitmq.port: "5672"
+  spring.rabbitmq.username: "mistech_srvs_conn"
+  spring.rabbitmq.password: {{ .Values.RABBITMQ_PASSWORD }}
+  spring.rabbitmq.virtual-host: "mist_srvs_vhost"
+  spring.rabbitmq.listener.simple.retry.enabled: "true"
+  spring.rabbitmq.listener.simple.retry.initial-interval: "4s"
+  spring.rabbitmq.listener.simple.retry.max-interval: "60s"
+  spring.rabbitmq.listener.simple.retry.max-attempts: "10"
+  spring.rabbitmq.listener.simple.retry.multiplier: "2"
+  # REDIS
+  spring.data.redis.host: "redis"
+  spring.data.redis.port: "6379"
+  spring.data.redis.password: {{ .Values.REDIS_PASSWORD }}
+  # SECURITY
+  spring.security.oauth2.resourceserver.jwt.jwk-set-uri: https://keycloak:8443/realms/mist/protocol/openid-connect/certs
+  spring.security.oauth2.client.registration.keycloak.authorization-grant-type: client_credentials
+  spring.security.oauth2.client.registration.keycloak.client-id: {{ .Values.KEYCLOAK_CLIENT_ID }}
+  spring.security.oauth2.client.registration.keycloak.client-secret: {{ .Values.KEYCLOAK_CLIENT_SECRET }}
+  spring.security.oauth2.client.provider.keycloak.token-uri: https://keycloak:8443/realms/mist/protocol/openid-connect/token
+  spring.security.oauth2.client.provider.keycloak.authorization-uri: https://keycloak:8443/realms/mist/protocol/openid-connect/auth
+  # MIST
+  app.title: "MIST Insight"
+  app.config.cache.enabled: "true"
+  mist.kubernetes.name: "insight-user-service"
+  mist.keycloak.server-url: "https://keycloak:8443/"
+  mist.keycloak.realm: "mist"
+  mist.keycloak.admin-user.login: "admin"
+  mist.keycloak.admin-user.password: {{ .Values.KEYCLOAK_ADMIN_PASSWORD }}
+  # MS
+  app.microservice.discovery.path: "https://insight-discovery:9400/mistech/discovery/v1"
+  app.microservice.b-i-service.path: "https://insight-business-intelligence:9200/mistech/business_intelligence/v1"
+  app.microservice.recovery-service.path: "https://insight-recovery:9015/mistech/recovery/v1"
+  # LOG
+  logging.level.ROOT: "INFO"
+  logging.level.ROOT.org.apache.http: "INFO"
+  #debug: "true"
+---
+# Deployment insight-user-service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: insight-user-service
+  namespace: mist-insight
+  labels:
+    app: insight-user-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: insight-user-service
+  template:
+    metadata:
+      labels:
+        app: insight-user-service
+    spec:
+      volumes:
+        - name: secret-volume
+          secret:
+            secretName: jks-secret
+        - name: new-cacerts
+          emptyDir: { }
+      initContainers:
+        - name: init-insight-user-service
+          image: {{ .Values.MIST_REGISTRY }}/insight-user-service:{{ .Values.VERSION }}
+          command: [ "/bin/sh", "-c" ]
+          args:
+            - |
+              # Copy original cacerts and import the custom CA
+              cp $JAVA_HOME/lib/security/cacerts /opt/new-cacerts/
+              chmod +w /opt/new-cacerts/cacerts
+              keytool -import -trustcacerts -alias mist-ca -no-prompt -keystore /opt/new-cacerts/cacerts -storepass changeit -file /etc/secret/ca.pem
+          volumeMounts:
+            - name: secret-volume
+              mountPath: /etc/secret
+              readOnly: true
+            - name: new-cacerts
+              mountPath: /opt/new-cacerts
+      containers:
+        - name: insight-user-service
+          image: {{ .Values.MIST_REGISTRY }}/insight-user-service:{{ .Values.VERSION }}
+          imagePullPolicy: Always
+          volumeMounts:
+            - name: secret-volume
+              mountPath: /etc/secret
+            - name: new-cacerts
+              mountPath: /opt/jdk/lib/security/cacerts
+              subPath: cacerts
+          ports:
+            - name: http
+              containerPort: 9201
+          envFrom:
+            - configMapRef:
+                name: insight-user-service-config
+          env:
+            - name: JAVA_TOOL_OPTIONS # JAVA_OPTS
+              value: {{ .Values.EFFECTIVE_SERVICE_JAVA_OPTS }}
+          resources:
+            limits:
+              memory: {{ .Values.EFFECTIVE_SERVICE_MEMORY }}
+              cpu: {{ .Values.EFFECTIVE_SERVICE_CPU }}
+            requests:
+              memory: {{ .Values.EFFECTIVE_SERVICE_MEMORY }}
+              cpu: {{ .Values.EFFECTIVE_SERVICE_CPU }}
+          livenessProbe:
+            tcpSocket:
+              port: 9201
+            initialDelaySeconds: 360
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: 9201
+            initialDelaySeconds: 360
+            periodSeconds: 30
+      imagePullSecrets:
+        - name: registry-secret

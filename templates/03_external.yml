@@ -1,0 +1,65 @@
+# External Postgres (Mist)
+kind: "Service"
+apiVersion: "v1"
+metadata:
+  name: "external-postgres"
+  namespace: mist-insight
+  labels:
+    app: external-postgres
+spec:
+  ports:
+    -
+      name: "external-postgres"
+      protocol: "TCP"
+      port: {{ .Values.EXTERNAL_POSTGRES_PORT }}
+      targetPort: {{ .Values.EXTERNAL_POSTGRES_PORT }}
+      nodePort: 0
+---
+kind: "Endpoints"
+apiVersion: "v1"
+metadata:
+  name: "external-postgres"
+  namespace: mist-insight
+  labels:
+    app: external-postgres
+subsets:
+  -
+    addresses:
+      -
+        ip: {{ .Values.EXTERNAL_POSTGRES_HOST }}
+    ports:
+      -
+        port: {{ .Values.EXTERNAL_POSTGRES_PORT }}
+        name: "external-postgres"
+---
+# External S3
+kind: "Service"
+apiVersion: "v1"
+metadata:
+  name: "external-s3"
+  namespace: mist-insight
+  labels:
+    app: external-s3
+spec:
+  ports:
+    -
+      name: "external-s3"
+      protocol: "TCP"
+      port: {{ .Values.EXTERNAL_S3_PORT }}
+      targetPort: {{ .Values.EXTERNAL_S3_PORT }}
+      nodePort: 0
+---
+kind: "Endpoints"
+apiVersion: "v1"
+metadata:
+  name: "external-s3"
+  namespace: mist-insight
+  labels:
+    app: external-s3
+subsets:
+  -
+    addresses:
+      - ip: {{ .Values.EXTERNAL_S3_HOST }}
+    ports:
+      - port: {{ .Values.EXTERNAL_S3_PORT }}
+        name: "external-s3"

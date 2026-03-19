@@ -1,0 +1,34 @@
+# PV Redis
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: redis-pv
+  namespace: mist-insight
+  labels:
+    type: local
+    app: redis
+spec:
+  storageClassName: "standard"
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: "/mnt/data/redis"
+---
+# PVC Redis
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-pvc
+  namespace: mist-insight
+  labels:
+    app: redis
+spec:
+  storageClassName: "standard"
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

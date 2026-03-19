@@ -1,0 +1,58 @@
+# Service insight-ui
+apiVersion: v1
+kind: Service
+metadata:
+  name: insight-ui
+  namespace: mist-insight
+  labels:
+    app: insight-ui
+spec:
+  ports:
+    - name: http
+      port: 443
+  selector:
+    app: insight-ui
+  type: ClusterIP
+---
+# Deployment insight-ui
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: insight-ui
+  namespace: mist-insight
+  labels:
+    app: insight-ui
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: insight-ui
+  template:
+    metadata:
+      labels:
+        app: insight-ui
+    spec:
+      volumes:
+        - name: secret-volume
+          secret:
+            secretName: tls-secret
+      containers:
+        - name: insight-ui
+          # версия микросервиса
+          image: {{ .Values.MIST_REGISTRY }}/insight-ui:{{ .Values.VERSION }}
+          imagePullPolicy: Always
+          volumeMounts:
+            - name: secret-volume
+              mountPath: /etc/nginx/tls
+          ports:
+            - name: http
+              containerPort: 443
+          resources:
+            limits:
+              memory: 256M
+              cpu: "0.25"
+            requests:
+              memory: 256M
+              cpu: "0.25"
+      imagePullSecrets:
+        - name: registry-secret

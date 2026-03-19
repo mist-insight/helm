@@ -1,0 +1,11 @@
+# External port for insight collector
+spec:
+  template:
+    spec:
+      containers:
+        - name: controller
+          ports:
+            #         - containerPort: 5671
+            #           hostPort: 5671
+            - containerPort: 5672
+              hostPort: 5672
