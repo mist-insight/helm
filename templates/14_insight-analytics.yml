@@ -165,12 +165,12 @@ spec:
           livenessProbe:
             tcpSocket:
               port: 9300
-            initialDelaySeconds: 360
-            periodSeconds: 30
+            initialDelaySeconds: 600
+            periodSeconds: 60
           readinessProbe:
             tcpSocket:
               port: 9300
-            initialDelaySeconds: 360
-            periodSeconds: 30
+            initialDelaySeconds: 600
+            periodSeconds: 60
       imagePullSecrets:
         - name: registry-secret
